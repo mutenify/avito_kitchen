@@ -24,6 +24,17 @@ const (
 		FROM menu_items
 		WHERE restaurant_id = $1 AND id = ANY($2);`
 
+	// queryUpdateMenuItem — частичное обновление позиции меню.
+	// COALESCE позволяет передавать NULL для полей, которые не нужно менять:
+	// $3/$4 равны nil, если соответствующее поле не пришло в запросе.
+	queryUpdateMenuItem = `
+		UPDATE menu_items
+		SET
+			is_available = COALESCE($3, is_available),
+			price        = COALESCE($4, price)
+		WHERE restaurant_id = $1 AND id = $2
+		RETURNING id, restaurant_id, name, description, price, is_available, created_at;`
+
 	// Запросы заказов
 	queryCreateOrder = `
 		INSERT INTO orders (restaurant_id, user_id, status, total_amount)

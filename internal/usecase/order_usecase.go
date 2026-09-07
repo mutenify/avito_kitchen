@@ -33,6 +33,18 @@ func (u *OrderUsecase) CreateOrder(ctx context.Context, req domain.CreateOrderRe
 		return nil, fmt.Errorf("%w: user_id is required", domain.ErrInvalidInput)
 	}
 
+	// Ресторан должен существовать и принимать заказы — без этой проверки
+	// заказ на несуществующее/отключённое заведение падал бы либо с невнятной
+	// ошибкой (ErrMenuItemNotFound, т.к. меню пустое), либо вообще проходил бы,
+	// если у заведения на момент проверки ещё оставалось активное меню.
+	restaurant, err := u.restaurantRepo.GetByID(ctx, req.RestaurantID)
+	if err != nil {
+		return nil, err
+	}
+	if !restaurant.IsActive {
+		return nil, domain.ErrRestaurantInactive
+	}
+
 	qtyByMenuItem := make(map[int64]int, len(req.Items))
 	itemIDs := make([]int64, 0, len(req.Items))
 
@@ -92,10 +104,19 @@ func (u *OrderUsecase) CreateOrder(ctx context.Context, req domain.CreateOrderRe
 	return order, nil
 }
 
-func (u *OrderUsecase) UpdateStatus(ctx context.Context, orderID uuid.UUID, newStatus domain.OrderStatus) error {
+// UpdateStatus меняет статус заказа от имени заведения restaurantID.
+// Явной авторизации в MVP нет, поэтому изоляция между заведениями обеспечивается
+// на уровне бизнес-логики: заказ, принадлежащий другому ресторану, для вызывающего
+// выглядит как несуществующий (ErrOrderNotFound), а не как "чужой" — это не даёт
+// подтвердить сам факт существования такого order_id.
+func (u *OrderUsecase) UpdateStatus(ctx context.Context, restaurantID int64, orderID uuid.UUID, newStatus domain.OrderStatus) error {
 	order, err := u.orderRepo.GetOrderByID(ctx, orderID)
 	if err != nil {
 		return err
+	}
+
+	if order.RestaurantID != restaurantID {
+		return domain.ErrOrderNotFound
 	}
 
 	if !order.Status.CanTransitionTo(newStatus) {

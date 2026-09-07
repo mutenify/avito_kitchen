@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"avito-kitchen/internal/domain"
 )
@@ -97,4 +98,29 @@ func (r *RestaurantRepository) GetMenuItemsByIDs(ctx context.Context, restaurant
 	}
 
 	return items, nil
+}
+
+func (r *RestaurantRepository) UpdateMenuItem(ctx context.Context, restaurantID, menuItemID int64, patch domain.UpdateMenuItemRequest) (*domain.MenuItem, error) {
+	if patch.IsAvailable == nil && patch.Price == nil {
+		return nil, fmt.Errorf("%w: at least one field (is_available or price) must be provided", domain.ErrInvalidInput)
+	}
+
+	// decimal.Decimal реализует driver.Valuer со значимым (не указательным) ресивером,
+	// поэтому *decimal.Decimal тоже удовлетворяет driver.Valuer — и database/sql вызовет
+	// Value() прямо на указателе, не проверив его на nil. Разыменовываем сами и передаём
+	// interface{}(nil) явно, если поле не задано.
+	var priceArg interface{}
+	if patch.Price != nil {
+		priceArg = *patch.Price
+	}
+
+	var item domain.MenuItem
+	err := r.db.QueryRowContext(ctx, queryUpdateMenuItem,
+		restaurantID, menuItemID, patch.IsAvailable, priceArg,
+	).Scan(&item.ID, &item.RestaurantID, &item.Name, &item.Description, &item.Price, &item.IsAvailable, &item.CreatedAt)
+	if err != nil {
+		return nil, mapError(err, domain.ErrMenuItemNotFound)
+	}
+
+	return &item, nil
 }

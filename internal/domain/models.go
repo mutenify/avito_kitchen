@@ -70,3 +70,12 @@ type CreateOrderItemItem struct {
 type UpdateOrderStatusRequest struct {
 	Status OrderStatus `json:"status"`
 }
+
+// UpdateMenuItemRequest — частичное обновление позиции меню со стороны заведения.
+// Указатели позволяют отличить "поле не передано" от "поле сброшено в zero value":
+// заведение может прислать только is_available (распродали блюдо) или только price
+// (изменили прайс), не переотправляя остальные поля.
+type UpdateMenuItemRequest struct {
+	IsAvailable *bool            `json:"is_available,omitempty"`
+	Price       *decimal.Decimal `json:"price,omitempty"`
+}
