@@ -1,0 +1,12 @@
+# Собранные бинарники
+/bin/
+*.exe
+
+# Локальные переменные окружения (см. .env.example)
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
