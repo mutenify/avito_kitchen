@@ -41,10 +41,13 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # Версия golangci-lint зафиксирована явно и совпадает с той, на которой
-      # проверялся .golangci.yml (schema v2) — чтобы CI не разъехался с тем,
+      # golangci-lint-action v6 не умеет ставить golangci-lint v2 (падает с
+      # "golangci-lint v2 is not supported by golangci-lint-action v6, you
+      # must update to golangci-lint-action v7") — нужен именно v7. Версия
+      # самого golangci-lint зафиксирована явно и совпадает с той, на которой
+      # проверялся .golangci.yml (schema v2), чтобы CI не разъехался с тем,
       # что было проверено локально при коммите конфига.
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           version: v2.13.2
