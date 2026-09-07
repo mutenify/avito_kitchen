@@ -23,3 +23,13 @@ func (s OrderStatus) CanTransitionTo(next OrderStatus) bool {
 	}
 	return false
 }
+
+// IsValid проверяет, что значение вообще является одним из шести статусов
+// заказа. Нужен HTTP-слою: значение status в query/body приходит строкой
+// снаружи, и прежде чем передавать его дальше в usecase, надо отличить
+// "неизвестный статус" (400 Bad Request) от "переход запрещён" (409 Conflict) —
+// это разные ошибки в domain/errors.go.
+func (s OrderStatus) IsValid() bool {
+	_, ok := validTransitions[s]
+	return ok
+}

@@ -2,82 +2,103 @@ openapi: 3.0.3
 info:
   title: Avito.Kitchen API
   version: 1.0.0
-  description: MVP API сервиса Авито.Кухня для интеграции клиентов и ресторанов.
+  description: |
+    MVP API сервиса Авито.Кухня.
+
+    Два независимых неймспейса поверх одного сервиса:
+    * **Клиентский API** (`/api/v1/restaurants`, `/api/v1/orders`) — каталог заведений, оформление
+      и отслеживание заказа.
+    * **API заведения** (`/api/v1/restaurants/{restaurantId}/...`) — управление доступностью/ценой
+      позиций меню, опрос новых заказов, смена их статуса. Вызывается mock-сервисом заведения.
+
+    Авторизация в MVP не реализована (по условию задания); `restaurantId` в пути — это то, чем
+    заведение опознаёт себя. Сервер, тем не менее, проверяет, что заказ действительно принадлежит
+    указанному в пути заведению (см. описание `PATCH /restaurants/{restaurantId}/orders/{orderId}/status`).
+
+tags:
+  - name: client
+    description: Клиентский API
+  - name: restaurant
+    description: API заведения
 
 paths:
   /api/v1/restaurants:
     get:
-      summary: Получить список активных заведений
+      tags: [client]
+      summary: Список активных заведений
       responses:
         '200':
-          description: Успешный ответ со списком ресторанов
+          description: Список заведений, принимающих заказы сейчас
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Restaurant'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /api/v1/restaurants/{id}/menu:
+  /api/v1/restaurants/{restaurantId}/menu:
     get:
-      summary: Получить меню конкретного заведения
+      tags: [client]
+      summary: Меню заведения
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
+        - $ref: '#/components/parameters/RestaurantId'
       responses:
         '200':
-          description: Меню заведения
-        '400':
-          $ref: '#/components/responses/BadRequest'
+          description: Позиции меню (в т.ч. недоступные — is_available=false)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MenuItem'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: Заведение существует, но временно не принимает заказы
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
   /api/v1/orders:
     post:
-      summary: Создать новый заказ
+      tags: [client]
+      summary: Создать заказ
+      description: >
+        Заказ создаётся одной транзакцией: проверяется, что заведение существует и активно,
+        что все позиции принадлежат ему и доступны (is_available=true), после чего фиксируется
+        цена каждой позиции на момент заказа (price_at_order).
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - restaurant_id
-                - user_id
-                - items
-              properties:
-                restaurant_id:
-                  type: integer
-                  example: 1
-                user_id:
-                  type: integer
-                  example: 42
-                items:
-                  type: array
-                  items:
-                    type: object
-                    required:
-                      - menu_item_id
-                      - quantity
-                    properties:
-                      menu_item_id:
-                        type: integer
-                        example: 101
-                      quantity:
-                        type: integer
-                        example: 2
+              $ref: '#/components/schemas/CreateOrderRequest'
       responses:
         '201':
-          description: Заказ успешно создан
+          description: Заказ создан, статус CREATED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
         '400':
-          description: Некорректные данные или блюда нет в наличии
+          description: Некорректные данные запроса (пустая корзина, quantity <= 0 и т.п.)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: Ресторан или блюдо не найдены
+          description: Заведение или одна из позиций меню не найдены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Заведение неактивно либо одна из позиций недоступна (out of stock)
           content:
             application/json:
               schema:
@@ -85,69 +106,152 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /api/v1/orders/{id}:
+  /api/v1/orders/{orderId}:
     get:
-      summary: Получить информацию и статус заказа
+      tags: [client]
+      summary: Статус и состав заказа
+      description: >
+        Заказ ищется только по UUID из пути — специально без привязки к user_id/restaurant_id,
+        чтобы ссылку на заказ можно было передать (например, для отслеживания доставки) без
+        дополнительной авторизации. Непредсказуемость UUID — единственная защита от перебора.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-            example: "550e8400-e29b-41d4-a716-446655440000"
+        - $ref: '#/components/parameters/OrderId'
       responses:
         '200':
-          description: Информация о заказе
+          description: Данные заказа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
         '400':
-          description: Неверный формат UUID
+          description: orderId не является валидным UUID
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: Заказ с указанным ID не найден
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/restaurants/{restaurantId}/orders:
+    get:
+      tags: [restaurant]
+      summary: Опрос заказов заведения по статусу
+      description: Используется mock-сервисом заведения для поллинга новых заказов (см. README, CJM заведения).
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+        - name: status
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/OrderStatus'
+          example: CREATED
+      responses:
+        '200':
+          description: Заказы заведения в указанном статусе
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Order'
+        '400':
+          description: Некорректное значение status
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /api/v1/orders/{id}/status:
+  /api/v1/restaurants/{restaurantId}/orders/{orderId}/status:
     patch:
-      summary: Обновить статус заказа (для ресторана)
+      tags: [restaurant]
+      summary: Сменить статус заказа
+      description: >
+        Допустимые переходы: CREATED→ACCEPTED, ACCEPTED→COOKING, COOKING→DELIVERING,
+        DELIVERING→COMPLETED; CANCELLED — из CREATED, ACCEPTED или COOKING (но не из
+        DELIVERING/COMPLETED). Любой другой переход — 409.
+        Если orderId существует, но принадлежит другому заведению, ручка отвечает 404,
+        как будто такого заказа для этого restaurantId нет — так реализована минимальная
+        изоляция между заведениями при отсутствии полноценной авторизации.
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
+        - $ref: '#/components/parameters/RestaurantId'
+        - $ref: '#/components/parameters/OrderId'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - status
-              properties:
-                status:
-                  type: string
-                  enum: [ACCEPTED, COOKING, DELIVERING, COMPLETED, CANCELLED]
-                  example: "COOKING"
+              $ref: '#/components/schemas/UpdateOrderStatusRequest'
       responses:
         '200':
-          description: Статус успешно обновлен
+          description: Статус обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
         '400':
-          description: Недопустимый статус или нелегальный переход состояния
+          description: Недопустимое значение status
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: Заказ не найден
+          description: Заказ не найден или принадлежит другому заведению
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Недопустимый переход между статусами
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/restaurants/{restaurantId}/menu/{itemId}:
+    patch:
+      tags: [restaurant]
+      summary: Обновить доступность и/или цену позиции меню
+      description: >
+        Частичное обновление: можно передать только is_available (например, блюдо закончилось),
+        только price, или оба поля сразу. Хотя бы одно поле обязательно.
+      parameters:
+        - $ref: '#/components/parameters/RestaurantId'
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 101
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMenuItemRequest'
+      responses:
+        '200':
+          description: Обновлённая позиция меню
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuItem'
+        '400':
+          description: Не передано ни одного поля для обновления, либо price отрицательна
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Заведение не найдено, либо позиция меню не принадлежит этому заведению
           content:
             application/json:
               schema:
@@ -156,17 +260,119 @@ paths:
           $ref: '#/components/responses/InternalServerError'
 
 components:
+  parameters:
+    RestaurantId:
+      name: restaurantId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+      example: 1
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      example: "550e8400-e29b-41d4-a716-446655440000"
+
   schemas:
+    OrderStatus:
+      type: string
+      enum: [CREATED, ACCEPTED, COOKING, DELIVERING, COMPLETED, CANCELLED]
+
+    Restaurant:
+      type: object
+      properties:
+        id: { type: integer, format: int64, example: 1 }
+        name: { type: string, example: "Додо Пицца" }
+        address: { type: string, example: "Невский проспект, 54" }
+        is_active: { type: boolean, example: true }
+        created_at: { type: string, format: date-time }
+
+    MenuItem:
+      type: object
+      properties:
+        id: { type: integer, format: int64, example: 101 }
+        restaurant_id: { type: integer, format: int64, example: 1 }
+        name: { type: string, example: "Пицца Пепперони" }
+        description: { type: string, example: "Пикантная пепперони, моцарелла, томатный соус" }
+        price: { type: string, format: decimal, example: "599.00" }
+        is_available: { type: boolean, example: true }
+        created_at: { type: string, format: date-time }
+
+    CreateOrderRequest:
+      type: object
+      required: [restaurant_id, user_id, items]
+      properties:
+        restaurant_id: { type: integer, format: int64, example: 1 }
+        user_id: { type: integer, format: int64, example: 42 }
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/CreateOrderItem'
+
+    CreateOrderItem:
+      type: object
+      required: [menu_item_id, quantity]
+      properties:
+        menu_item_id: { type: integer, format: int64, example: 101 }
+        quantity: { type: integer, minimum: 1, example: 2 }
+
+    Order:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        restaurant_id: { type: integer, format: int64 }
+        user_id: { type: integer, format: int64 }
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        total_amount: { type: string, format: decimal, example: "1198.00" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+
+    OrderItem:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        order_id: { type: string, format: uuid }
+        menu_item_id: { type: integer, format: int64 }
+        name: { type: string, example: "Пицца Пепперони" }
+        quantity: { type: integer, example: 2 }
+        price_at_order: { type: string, format: decimal, example: "599.00" }
+
+    UpdateOrderStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+          example: COOKING
+
+    UpdateMenuItemRequest:
+      type: object
+      description: Хотя бы одно из полей обязательно.
+      properties:
+        is_available: { type: boolean, example: false }
+        price: { type: string, format: decimal, example: "649.00" }
+
     ErrorResponse:
       type: object
       properties:
         error:
           type: string
-          example: "Блюдо отсутствует в наличии"
+          example: "menu item is out of stock or unavailable: Кока-Кола 0.5"
 
   responses:
     BadRequest:
-      description: Некорректный запрос (неверные параметры)
+      description: Некорректный запрос
       content:
         application/json:
           schema:

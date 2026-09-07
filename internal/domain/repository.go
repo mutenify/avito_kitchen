@@ -12,6 +12,10 @@ type RestaurantRepository interface {
 	GetByID(ctx context.Context, id int64) (*Restaurant, error)
 	GetMenuByRestaurantID(ctx context.Context, restaurantID int64) ([]MenuItem, error)
 	GetMenuItemsByIDs(ctx context.Context, restaurantID int64, ids []int64) ([]MenuItem, error)
+	// UpdateMenuItem — частичное обновление позиции меню (доступность и/или цена).
+	// Используется заведением, чтобы снять блюдо с продажи или скорректировать цену,
+	// не трогая остальные поля.
+	UpdateMenuItem(ctx context.Context, restaurantID, menuItemID int64, patch UpdateMenuItemRequest) (*MenuItem, error)
 }
 
 // OrderRepository — контракт хранилища заказов.
