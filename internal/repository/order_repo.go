@@ -40,9 +40,9 @@ func (r *OrderRepository) CreateOrder(ctx context.Context, order *domain.Order) 
 
 	for i := range order.Items {
 		order.Items[i].OrderID = order.ID
-		if _, err := tx.ExecContext(ctx, queryCreateOrderItem,
+		if err := tx.QueryRowContext(ctx, queryCreateOrderItem,
 			order.ID, order.Items[i].MenuItemID, order.Items[i].Quantity, order.Items[i].PriceAtOrder,
-		); err != nil {
+		).Scan(&order.Items[i].ID); err != nil {
 			return mapError(err, nil)
 		}
 	}
