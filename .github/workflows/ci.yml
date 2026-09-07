@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Ручной запуск с любой ветки через вкладку Actions -> CI -> "Run workflow",
+  # без пуша и без открытия PR — удобно проверить ветку до того, как заводить PR.
+  workflow_dispatch:
 
 jobs:
   test:
