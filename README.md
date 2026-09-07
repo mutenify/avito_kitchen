@@ -241,13 +241,22 @@ docker compose up --build
 
 ### Статус реализации
 
-Слои `domain` / `usecase` / `repository` и миграции готовы и покрывают сценарии из раздела 3. В работе:
+Слои `domain` / `usecase` / `repository`, миграции и HTTP API (`cmd/api`, `internal/httpserver`) готовы и покрывают сценарии из раздела 3 — все запросы из обоих CJM вручную прогнаны через поднятый локально сервис. В работе:
 
-- [ ] HTTP-хендлеры и роутинг (`cmd/api`, стандартный `net/http.ServeMux` — во избежание лишней зависимости на MVP-масштабе достаточно встроенного роутинга с шаблонами путей Go 1.22+)
 - [ ] Mock Restaurant Service (раздел 3.2, отдельный процесс в `cmd/mock-restaurant`)
 - [ ] `docker-compose.yml` и `Dockerfile` для обоих сервисов + прогон миграций при старте
 - [ ] Юнит-тесты usecase-слоя (репозитории уже спрятаны за интерфейсами в `domain`, поэтому мокаются без поднятия БД) и интеграционные тесты репозиториев
 - [ ] `.golangci.yml`
+
+Локальный запуск без Docker (пока не готов `docker-compose.yml`):
+
+```bash
+# Poднять Postgres любым способом и применить миграции из migrations/*.sql,
+# затем:
+DB_HOST=localhost DB_PORT=5432 DB_USER=postgres DB_PASSWORD=postgres \
+DB_NAME=avito_kitchen DB_SSLMODE=disable HTTP_PORT=8080 \
+  go run ./cmd/api
+```
 
 ---
 

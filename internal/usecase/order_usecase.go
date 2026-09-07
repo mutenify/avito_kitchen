@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
@@ -104,27 +105,37 @@ func (u *OrderUsecase) CreateOrder(ctx context.Context, req domain.CreateOrderRe
 	return order, nil
 }
 
-// UpdateStatus меняет статус заказа от имени заведения restaurantID.
+// UpdateStatus меняет статус заказа от имени заведения restaurantID и
+// возвращает заказ с уже применённым изменением — HTTP-хендлеру не нужно
+// самому делать повторный GetOrderByID, чтобы сформировать тело ответа.
+//
 // Явной авторизации в MVP нет, поэтому изоляция между заведениями обеспечивается
 // на уровне бизнес-логики: заказ, принадлежащий другому ресторану, для вызывающего
 // выглядит как несуществующий (ErrOrderNotFound), а не как "чужой" — это не даёт
 // подтвердить сам факт существования такого order_id.
-func (u *OrderUsecase) UpdateStatus(ctx context.Context, restaurantID int64, orderID uuid.UUID, newStatus domain.OrderStatus) error {
+func (u *OrderUsecase) UpdateStatus(ctx context.Context, restaurantID int64, orderID uuid.UUID, newStatus domain.OrderStatus) (*domain.Order, error) {
 	order, err := u.orderRepo.GetOrderByID(ctx, orderID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if order.RestaurantID != restaurantID {
-		return domain.ErrOrderNotFound
+		return nil, domain.ErrOrderNotFound
 	}
 
 	if !order.Status.CanTransitionTo(newStatus) {
-		return fmt.Errorf("%w: cannot transition from %s to %s",
+		return nil, fmt.Errorf("%w: cannot transition from %s to %s",
 			domain.ErrInvalidStatusTransition, order.Status, newStatus)
 	}
 
-	return u.orderRepo.UpdateStatus(ctx, orderID, newStatus)
+	if err := u.orderRepo.UpdateStatus(ctx, orderID, newStatus); err != nil {
+		return nil, err
+	}
+
+	order.Status = newStatus
+	order.UpdatedAt = time.Now().UTC()
+
+	return order, nil
 }
 
 func (u *OrderUsecase) GetOrderByID(ctx context.Context, id uuid.UUID) (*domain.Order, error) {
