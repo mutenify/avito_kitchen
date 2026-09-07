@@ -26,7 +26,10 @@ func (r *OrderRepository) CreateOrder(ctx context.Context, order *domain.Order) 
 	if err != nil {
 		return mapError(err, nil)
 	}
-	defer tx.Rollback()
+	// После успешного tx.Commit() ниже Rollback() вернёт sql.ErrTxDone — это
+	// штатное поведение паттерна "defer Rollback + explicit Commit", ошибку
+	// в этом случае осознанно игнорируем.
+	defer func() { _ = tx.Rollback() }()
 
 	err = tx.QueryRowContext(ctx, queryCreateOrder,
 		order.RestaurantID, order.UserID, order.Status, order.TotalAmount,
@@ -56,7 +59,7 @@ func (r *OrderRepository) GetOrderByID(ctx context.Context, id uuid.UUID) (*doma
 	if err != nil {
 		return nil, mapError(err, nil)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var order *domain.Order
 
@@ -132,7 +135,7 @@ func (r *OrderRepository) GetOrdersByRestaurantAndStatus(ctx context.Context, re
 	if err != nil {
 		return nil, mapError(err, nil)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	orders := make([]domain.Order, 0)
 	for rows.Next() {

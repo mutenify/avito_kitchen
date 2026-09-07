@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-avito_kitchen}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-avito_kitchen}"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  # Одноразовый контейнер: применяет миграции из migrations/*.sql и завершается.
+  # api ждёт его успешного завершения (condition: service_completed_successfully),
+  # поэтому схема БД гарантированно готова до первого запроса к Core API.
+  migrate:
+    image: migrate/migrate:v4.17.1
+    volumes:
+      - ./migrations:/migrations:ro
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-avito_kitchen}?sslmode=disable"
+      - "up"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: cmd/api/Dockerfile
+    environment:
+      HTTP_PORT: 8080
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${DB_NAME:-avito_kitchen}
+      DB_SSLMODE: disable
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # Эмулятор заведения (README, раздел 3.2 и "Заведения" в описании задачи):
+  # знает про api только по HTTP (CORE_API_URL) — как и полагалось бы для
+  # независимого деплоя, см. internal/mockrestaurant/types.go.
+  mock-restaurant:
+    build:
+      context: .
+      dockerfile: cmd/mock-restaurant/Dockerfile
+    environment:
+      HTTP_PORT: 8081
+      CORE_API_URL: http://api:8080
+      RESTAURANT_ID: ${RESTAURANT_ID:-1}
+      POLL_INTERVAL: ${POLL_INTERVAL:-5s}
+      STAGE_DELAY: ${STAGE_DELAY:-5s}
+    ports:
+      - "${MOCK_HTTP_PORT:-8081}:8081"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

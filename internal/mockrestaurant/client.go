@@ -109,7 +109,7 @@ func (c *CoreClient) doJSON(ctx context.Context, method, reqURL string, body any
 	if err != nil {
 		return fmt.Errorf("call core api: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= http.StatusBadRequest {
 		var apiErr errorResponse

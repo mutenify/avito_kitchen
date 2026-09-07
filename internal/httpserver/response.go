@@ -38,7 +38,7 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 // намеренно строгим: опечатка в поле запроса (например, "quantiy" вместо
 // "quantity") станет явной ошибкой 400, а не тихо проигнорируется.
 func decodeJSON(r *http.Request, dst any) error {
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
