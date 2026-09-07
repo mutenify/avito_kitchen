@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      # Без -cover: часть пакетов (cmd/*, internal/config, internal/repository,
+      # internal/mockrestaurant) пока не имеет тестов, а инструментирование
+      # покрытия для пакетов без единого теста зависит от нюансов конкретной
+      # версии Go-тулчейна. -race достаточно как критерий "тесты прошли",
+      # покрытие можно смотреть локально: go test ./... -cover.
+      - name: Test
+        run: go test ./... -race
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # Версия golangci-lint зафиксирована явно и совпадает с той, на которой
+      # проверялся .golangci.yml (schema v2) — чтобы CI не разъехался с тем,
+      # что было проверено локально при коммите конфига.
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.13.2

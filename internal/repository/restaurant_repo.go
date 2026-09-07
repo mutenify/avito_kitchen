@@ -23,7 +23,7 @@ func (r *RestaurantRepository) GetAll(ctx context.Context) ([]domain.Restaurant,
 	if err != nil {
 		return nil, mapError(err, nil)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	restaurants := make([]domain.Restaurant, 0)
 	for rows.Next() {
@@ -57,7 +57,7 @@ func (r *RestaurantRepository) GetMenuByRestaurantID(ctx context.Context, restau
 	if err != nil {
 		return nil, mapError(err, nil)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	menu := make([]domain.MenuItem, 0)
 	for rows.Next() {
@@ -83,7 +83,7 @@ func (r *RestaurantRepository) GetMenuItemsByIDs(ctx context.Context, restaurant
 	if err != nil {
 		return nil, mapError(err, nil)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	items := make([]domain.MenuItem, 0, len(ids))
 	for rows.Next() {

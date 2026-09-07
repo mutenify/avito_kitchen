@@ -40,7 +40,11 @@ func main() {
 		// бесполезен, поэтому падаем сразу, а не поднимаемся в нерабочем виде.
 		log.Fatalf("failed to connect to database: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Printf("failed to close db connection: %v", err)
+		}
+	}()
 
 	// --- Сборка слоёв: repository -> usecase -> httpserver ---
 	restaurantRepo := repository.NewRestaurantRepository(db)
