@@ -1,0 +1,185 @@
+openapi: 3.0.3
+info:
+  title: Avito.Kitchen API
+  version: 1.0.0
+  description: MVP API сервиса Авито.Кухня для интеграции клиентов и ресторанов.
+
+paths:
+  /api/v1/restaurants:
+    get:
+      summary: Получить список активных заведений
+      responses:
+        '200':
+          description: Успешный ответ со списком ресторанов
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/restaurants/{id}/menu:
+    get:
+      summary: Получить меню конкретного заведения
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Меню заведения
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/orders:
+    post:
+      summary: Создать новый заказ
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - restaurant_id
+                - user_id
+                - items
+              properties:
+                restaurant_id:
+                  type: integer
+                  example: 1
+                user_id:
+                  type: integer
+                  example: 42
+                items:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - menu_item_id
+                      - quantity
+                    properties:
+                      menu_item_id:
+                        type: integer
+                        example: 101
+                      quantity:
+                        type: integer
+                        example: 2
+      responses:
+        '201':
+          description: Заказ успешно создан
+        '400':
+          description: Некорректные данные или блюда нет в наличии
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Ресторан или блюдо не найдены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/orders/{id}:
+    get:
+      summary: Получить информацию и статус заказа
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Информация о заказе
+        '400':
+          description: Неверный формат UUID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Заказ с указанным ID не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/orders/{id}/status:
+    patch:
+      summary: Обновить статус заказа (для ресторана)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [ACCEPTED, COOKING, DELIVERING, COMPLETED, CANCELLED]
+                  example: "COOKING"
+      responses:
+        '200':
+          description: Статус успешно обновлен
+        '400':
+          description: Недопустимый статус или нелегальный переход состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Заказ не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Блюдо отсутствует в наличии"
+
+  responses:
+    BadRequest:
+      description: Некорректный запрос (неверные параметры)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Запрашиваемый ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalServerError:
+      description: Внутренняя ошибка сервера
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
