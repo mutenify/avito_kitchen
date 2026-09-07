@@ -229,7 +229,7 @@ CREATED ──▶ ACCEPTED ──▶ COOKING ──▶ DELIVERING ──▶ COMP
 - Docker и Docker Compose
 
 ```bash
-git clone <repo-url> avito-kitchen
+git clone git@github.com:talense-tasks/backend-trainee-assignment-autumn-2026-flow-2-mutenify-d47ac84f.git avito-kitchen
 cd avito-kitchen
 docker compose up --build
 ```
