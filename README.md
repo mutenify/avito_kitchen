@@ -2,7 +2,7 @@
 
 MVP бэкенд-сервиса для интеграции заведений общественного питания с площадкой Авито и обработки заказов пользователей на доставку еды.
 
-> Упрощения, на которые сознательно пошли в MVP, помечены пометкой **[MVP]** — почему именно так и что изменится при масштабировании, см. в разделе 6.
+> Упрощения, на которые сознательно пошли в MVP, помечены пометкой **[MVP]** — почему именно так и что изменится при масштабировании, см. в разделе 7.
 
 ---
 
@@ -79,7 +79,7 @@ erDiagram
 
 ### Архитектурные решения
 
-1. **Стратегия первичных ключей.** `restaurants`, `menu_items`, `order_items` — `BIGSERIAL`: внутренние справочные сущности с частым чтением по индексу. `orders` — `UUID`: заказ передаётся клиенту как публичная ссылка (`GET /orders/{id}` без авторизации, см. раздел 6), и предсказуемый инкрементный id раскрывал бы объём заказов конкурентам и позволял перебором читать чужие заказы.
+1. **Стратегия первичных ключей.** `restaurants`, `menu_items`, `order_items` — `BIGSERIAL`: внутренние справочные сущности с частым чтением по индексу. `orders` — `UUID`: заказ передаётся клиенту как публичная ссылка (`GET /orders/{id}` без авторизации, см. раздел 7), и предсказуемый инкрементный id раскрывал бы объём заказов конкурентам и позволял перебором читать чужие заказы.
 
 2. **Индексы.**
    - `idx_menu_items_restaurant_id` — фильтрация меню конкретного заведения.
@@ -193,7 +193,7 @@ CREATED ──▶ ACCEPTED ──▶ COOKING ──▶ DELIVERING ──▶ COMP
 
 - `ACCEPTED` выделен в отдельный шаг: заведение должно явно подтвердить, что взяло заказ в работу, до начала готовки — иначе клиент не отличит «никто не видел заказ» от «уже готовят».
 - Отменить можно только до момента, когда заказ выехал на доставку (`DELIVERING`) — далее возможен только `COMPLETED`. Это доменное правило проверяется в `domain.OrderStatus.CanTransitionTo` до обращения к БД.
-- Каждая ручка смены статуса и опроса заказов принимает `restaurant_id` в пути (`/restaurants/{id}/orders/...`). Явной авторизации в MVP нет (см. раздел 6), но usecase-слой сверяет `order.RestaurantID` с `{id}` из пути: попытка изменить чужой заказ возвращает `404`, как будто заказа с таким id для этого заведения не существует — так минимальная изоляция между заведениями есть уже сейчас, без полноценного AuthZ.
+- Каждая ручка смены статуса и опроса заказов принимает `restaurant_id` в пути (`/restaurants/{id}/orders/...`). Явной авторизации в MVP нет (см. раздел 7), но usecase-слой сверяет `order.RestaurantID` с `{id}` из пути: попытка изменить чужой заказ возвращает `404`, как будто заказа с таким id для этого заведения не существует — так минимальная изоляция между заведениями есть уже сейчас, без полноценного AuthZ.
 
 ---
 
@@ -229,38 +229,60 @@ CREATED ──▶ ACCEPTED ──▶ COOKING ──▶ DELIVERING ──▶ COMP
 - Docker и Docker Compose
 
 ```bash
-git clone git@github.com:talense-tasks/backend-trainee-assignment-autumn-2026-flow-2-mutenify-d47ac84f.git avito-kitchen
-cd avito-kitchen
+git clone git@github.com:talense-tasks/backend-trainee-assignment-autumn-2026-flow-2-mutenify-d47ac84f.git
+cd backend-trainee-assignment-autumn-2026-flow-2-mutenify-d47ac84f
 docker compose up --build
 ```
 
-Сервисы:
+`docker-compose.yml` сам поднимает Postgres → накатывает миграции (одноразовый контейнер `migrate`) → стартует Core API → стартует mock-restaurant. Сервисы:
 - **Avito.Kitchen Core API:** `http://localhost:8080`
 - **Mock Restaurant Service:** `http://localhost:8081`
 - **PostgreSQL:** `localhost:5432`
 
-### Статус реализации
+Проверить, что всё действительно работает вместе, а не просто поднялось:
+```bash
+curl -X POST http://localhost:8080/api/v1/orders \
+  -H "Content-Type: application/json" \
+  -d '{"restaurant_id":1,"user_id":42,"items":[{"menu_item_id":1,"quantity":1}]}'
+```
+и посмотреть логи `mock-restaurant` (`docker compose logs -f mock-restaurant`) — заказ должен сам, без внешнего вмешательства, пройти `CREATED → ACCEPTED → COOKING → DELIVERING → COMPLETED` за ~20 секунд.
 
-Слои `domain` / `usecase` / `repository`, миграции и HTTP API (`cmd/api`, `internal/httpserver`) готовы и покрывают сценарии из раздела 3 — все запросы из обоих CJM вручную прогнаны через поднятый локально сервис. В работе:
-
-- [ ] Mock Restaurant Service (раздел 3.2, отдельный процесс в `cmd/mock-restaurant`)
-- [ ] `docker-compose.yml` и `Dockerfile` для обоих сервисов + прогон миграций при старте
-- [ ] Юнит-тесты usecase-слоя (репозитории уже спрятаны за интерфейсами в `domain`, поэтому мокаются без поднятия БД) и интеграционные тесты репозиториев
-- [ ] `.golangci.yml`
-
-Локальный запуск без Docker (пока не готов `docker-compose.yml`):
+### Локальный запуск без Docker
 
 ```bash
-# Poднять Postgres любым способом и применить миграции из migrations/*.sql,
-# затем:
+# Поднять Postgres любым способом и применить миграции из migrations/*.sql, затем:
 DB_HOST=localhost DB_PORT=5432 DB_USER=postgres DB_PASSWORD=postgres \
 DB_NAME=avito_kitchen DB_SSLMODE=disable HTTP_PORT=8080 \
   go run ./cmd/api
+
+# во втором терминале:
+CORE_API_URL=http://localhost:8080 RESTAURANT_ID=1 HTTP_PORT=8081 \
+  go run ./cmd/mock-restaurant
 ```
 
 ---
 
-## 6. Допущения MVP и план масштабирования
+## 6. Тесты и статический анализ
+
+```bash
+go build ./...              # компилируется без ошибок
+go vet ./...                # штатный статический анализ Go
+go test ./... -race         # юнит-тесты domain/usecase/httpserver, с детектором гонок
+go test ./... -cover        # покрытие (локально; в CI сознательно не включено — см. ниже)
+```
+
+Юнит-тесты — только на `domain` и `usecase`: репозитории спрятаны за интерфейсами (`internal/domain/repository.go`), поэтому бизнес-логика (расчёт суммы заказа, машина статусов, проверки доступности/активности заведения) проверяется фейковыми реализациями в памяти, без поднятия Postgres — см. `internal/usecase/fakes_test.go`. Repository-слой автотестами не покрыт: используемый SQL специфичен для Postgres (`ANY($2)`, `ENUM`, `RETURNING`), тестировать его пришлось бы через testcontainers — вместо этого он провалидирован вручную end-to-end через реальный docker-compose стек.
+
+Линтер — `golangci-lint`, конфиг в `.golangci.yml` (schema v2, версия линтера — `2.x`, более старая v1 этот конфиг не распарсит):
+```bash
+golangci-lint run ./...
+```
+
+**CI:** `.github/workflows/ci.yml` — два джоба (`test`, `lint`), запускаются на пуш/PR в `main`, плюс `workflow_dispatch` для ручного запуска с любой ветки (вкладка Actions → CI → "Run workflow"). Если у репозитория Actions отключены на уровне организации — конфигурация всё равно в репозитории (что и требуется), просто выполнить её может только сам GitHub, а не вы; в этом случае ориентир — те же команды локально, они и есть источник истины для CI.
+
+---
+
+## 7. Допущения MVP и план масштабирования
 
 | Упрощение в MVP | Почему это приемлемо сейчас | Что меняется при масштабировании |
 |---|---|---|
