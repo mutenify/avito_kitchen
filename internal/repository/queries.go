@@ -43,7 +43,8 @@ const (
 
 	queryCreateOrderItem = `
 		INSERT INTO order_items (order_id, menu_item_id, quantity, price_at_order)
-		VALUES ($1, $2, $3, $4);`
+		VALUES ($1, $2, $3, $4)
+		RETURNING id;`
 
 	queryGetOrderWithItems = `
 		SELECT
